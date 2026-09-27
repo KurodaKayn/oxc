@@ -394,10 +394,8 @@ impl<'a> PeepholeOptimizations {
                 match &member.expression {
                     Expression::StringLiteral(s) => {
                         let span = member.span;
-                        {
-                            let Some(name) = s.value.as_str() else { return };
-                            (name, &mut member.object, span)
-                        }
+                        let Some(name) = s.value.as_str() else { return };
+                        (name, &mut member.object, span)
                     }
                     Expression::NumericLiteral(n) => {
                         if let Some(integer_index) = n.value.to_integer_index() {

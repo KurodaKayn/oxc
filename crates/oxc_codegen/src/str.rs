@@ -131,7 +131,7 @@ impl Codegen<'_> {
         allow_backtick: bool,
     ) {
         let quote = quote.unwrap_or_else(|| {
-            let quote = quote_for_js_string(value, allow_backtick);
+            let quote = quote_for_bytes(value.as_bytes().iter(), allow_backtick);
             quote.print(self);
             quote
         });
@@ -199,29 +199,6 @@ impl Codegen<'_> {
             }
         }
         quote.print(self);
-    }
-}
-
-/// Use the same quote costs and tie-breaking as the UTF-8 printer.
-fn quote_for_js_string(value: JSStr<'_>, allow_backtick: bool) -> Quote {
-    let (mut single, mut double, mut backtick) = (0isize, 0isize, 0isize);
-    let mut chars = value.chars().peekable();
-    while let Some(ch) = chars.next() {
-        match ch.to_char() {
-            Some('\'') => single += 1,
-            Some('"') => double += 1,
-            Some('`') => backtick += 1,
-            Some('\n') => backtick -= 1,
-            Some('$') if chars.peek().is_some_and(|ch| ch.to_char() == Some('{')) => backtick += 1,
-            _ => {}
-        }
-    }
-    if allow_backtick && backtick <= single && backtick <= double {
-        Quote::Backtick
-    } else if double <= single {
-        Quote::Double
-    } else {
-        Quote::Single
     }
 }
 
@@ -344,11 +321,7 @@ impl PrintStringState<'_> {
     }
 
     fn calculate_quote_impl(&mut self, codegen: &mut Codegen) -> Quote {
-        let quote = if self.allow_backtick {
-            self.calculate_quote_maybe_backtick()
-        } else {
-            self.calculate_quote_no_backtick()
-        };
+        let quote = quote_for_bytes(self.bytes.clone(), self.allow_backtick);
 
         quote.print(codegen);
 
@@ -356,69 +329,77 @@ impl PrintStringState<'_> {
 
         quote
     }
+}
 
-    /// Calculate optimum quote character to use, when backtick (`) is an option.
-    fn calculate_quote_maybe_backtick(&self) -> Quote {
-        // Strings are assumed to be no longer than `MAX_LEN` (defined in `oxc_parser`),
-        // which holds for all strings produced by the parser:
-        // * 64-bit platforms: `u32::MAX - 256`.
-        // * 32-bit platforms: `i32::MAX`.
-        // Each byte changes a cost by at most 1, so in either case `isize` cannot overflow.
-        let mut single_cost: isize = 0;
-        let mut double_cost: isize = 0;
-        let mut backtick_cost: isize = 0;
-        let mut bytes = self.bytes.clone();
-        while let Some(b) = bytes.next() {
-            match b {
-                b'\n' => backtick_cost -= 1,
-                b'\'' => single_cost += 1,
-                b'"' => double_cost += 1,
-                b'`' => backtick_cost += 1,
-                b'$' if bytes.peek() == Some(&b'{') => {
-                    backtick_cost += 1;
-                }
-                _ => {}
+// Quote costs depend only on ASCII bytes, so this also works for WTF-8.
+fn quote_for_bytes(bytes: slice::Iter<'_, u8>, allow_backtick: bool) -> Quote {
+    if allow_backtick {
+        calculate_quote_maybe_backtick(bytes)
+    } else {
+        calculate_quote_no_backtick(bytes)
+    }
+}
+
+/// Calculate optimum quote character to use, when backtick (`) is an option.
+fn calculate_quote_maybe_backtick(mut bytes: slice::Iter<'_, u8>) -> Quote {
+    // Strings are assumed to be no longer than `MAX_LEN` (defined in `oxc_parser`),
+    // which holds for all strings produced by the parser:
+    // * 64-bit platforms: `u32::MAX - 256`.
+    // * 32-bit platforms: `i32::MAX`.
+    // Each byte changes a cost by at most 1, so in either case `isize` cannot overflow.
+    let mut single_cost: isize = 0;
+    let mut double_cost: isize = 0;
+    let mut backtick_cost: isize = 0;
+    while let Some(b) = bytes.next() {
+        match b {
+            b'\n' => backtick_cost -= 1,
+            b'\'' => single_cost += 1,
+            b'"' => double_cost += 1,
+            b'`' => backtick_cost += 1,
+            b'$' if bytes.peek() == Some(&b'{') => {
+                backtick_cost += 1;
             }
+            _ => {}
         }
+    }
 
-        // If equal cost for different quotes prefer, in order:
-        // 1. Backtick
-        // 2. Double quote
-        // 3. Single quote
-        #[rustfmt::skip]
-        let quote = if backtick_cost <= double_cost {
-            if backtick_cost <= single_cost {
-                Quote::Backtick
-            } else {
-                Quote::Single
-            }
-        } else if double_cost <= single_cost {
-            Quote::Double
+    // If equal cost for different quotes prefer, in order:
+    // 1. Backtick
+    // 2. Double quote
+    // 3. Single quote
+    #[rustfmt::skip]
+    let quote = if backtick_cost <= double_cost {
+        if backtick_cost <= single_cost {
+            Quote::Backtick
         } else {
             Quote::Single
-        };
-        quote
-    }
-
-    /// Calculate optimum quote character to use, when backtick (`) is not an option.
-    fn calculate_quote_no_backtick(&self) -> Quote {
-        // Strings are assumed to be no longer than `MAX_LEN` (defined in `oxc_parser`),
-        // which holds for all strings produced by the parser:
-        // * 64-bit platforms: `u32::MAX - 256`.
-        // * 32-bit platforms: `i32::MAX`.
-        // Each byte changes a cost by at most 1, so in either case `isize` cannot overflow.
-        let mut single_cost: isize = 0;
-        for &b in self.bytes.clone() {
-            match b {
-                b'\'' => single_cost += 1,
-                b'"' => single_cost -= 1,
-                _ => {}
-            }
         }
+    } else if double_cost <= single_cost {
+        Quote::Double
+    } else {
+        Quote::Single
+    };
+    quote
+}
 
-        // Prefer double quote over single quote if cost is the same
-        if single_cost < 0 { Quote::Single } else { Quote::Double }
+/// Calculate optimum quote character to use, when backtick (`) is not an option.
+fn calculate_quote_no_backtick(bytes: slice::Iter<'_, u8>) -> Quote {
+    // Strings are assumed to be no longer than `MAX_LEN` (defined in `oxc_parser`),
+    // which holds for all strings produced by the parser:
+    // * 64-bit platforms: `u32::MAX - 256`.
+    // * 32-bit platforms: `i32::MAX`.
+    // Each byte changes a cost by at most 1, so in either case `isize` cannot overflow.
+    let mut single_cost: isize = 0;
+    for &b in bytes {
+        match b {
+            b'\'' => single_cost += 1,
+            b'"' => single_cost -= 1,
+            _ => {}
+        }
     }
+
+    // Prefer double quote over single quote if cost is the same
+    if single_cost < 0 { Quote::Single } else { Quote::Double }
 }
 
 /// Convert `char` to UTF-8 bytes array.

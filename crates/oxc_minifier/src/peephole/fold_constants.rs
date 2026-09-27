@@ -998,12 +998,8 @@ impl<'a> PeepholeOptimizations {
                 .first()
                 .or_else(|| next_raw.as_bytes().first())
                 .is_some_and(u8::is_ascii_digit);
-            let cooked_ends_with_null = quasi.value.cooked.is_some_and(|cooked| {
-                cooked.as_str().map_or_else(
-                    || cooked.chars().last().is_some_and(|ch| ch.to_u32() == 0),
-                    |value| value.ends_with('\0'),
-                )
-            });
+            let cooked_ends_with_null =
+                quasi.value.cooked.is_some_and(|cooked| cooked.as_bytes().last() == Some(&0));
             quasi.value.raw = if starts_with_digit
                 && cooked_ends_with_null
                 && let Some(prefix) = raw.strip_suffix("\\0")
