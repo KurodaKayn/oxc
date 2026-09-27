@@ -2128,9 +2128,6 @@ impl Display for ModuleExportName<'_> {
 impl<'a> ModuleExportName<'a> {
     /// Returns the exported name of this module export name.
     ///
-    /// The name is always UTF-8: the specification requires module export names to be
-    /// well-formed Unicode, and the parser rejects a string form containing a lone surrogate.
-    ///
     /// ## Example
     ///
     /// - `export { foo }` => `"foo"`
@@ -2139,8 +2136,7 @@ impl<'a> ModuleExportName<'a> {
     ///
     /// ## Panics
     ///
-    /// Panics if a string form contains a lone surrogate.
-    /// The parser rejects such a name, so this only happens for an AST built by other means.
+    /// Panics if a string name contains a lone surrogate. The parser rejects such names.
     pub fn name(&self) -> Str<'a> {
         match self {
             Self::IdentifierName(identifier) => identifier.name.into(),

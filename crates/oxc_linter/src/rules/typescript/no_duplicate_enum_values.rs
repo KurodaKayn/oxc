@@ -126,8 +126,6 @@ impl Rule for NoDuplicateEnumValues {
                 }
                 Expression::StringLiteral(s) => {
                     if let Some(old_span) = seen_string_values.insert(s.value, s.span) {
-                        // Preserve the existing single-quoted UTF-8 diagnostic.
-                        // Debug supplies a quoted, escaped name for lone surrogates.
                         let v = s
                             .value
                             .as_str()

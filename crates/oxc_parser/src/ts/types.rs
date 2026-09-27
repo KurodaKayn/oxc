@@ -1196,9 +1196,7 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         if (!is_with && !is_assert) || self.cur_token().escaped() {
             self.error(diagnostics::ts_import_type_options_expected_with(key_span));
         }
-        // Invalid string keys were diagnosed above.
-        // Read them from the JavaScript string table.
-        // Only values containing lone surrogates need an empty recovery name.
+        // Recover with an empty name for lone surrogates; the invalid key was diagnosed above.
         let key_name = self.ident(if self.at(Kind::Str) {
             self.cur_js_string().as_str().unwrap_or_default()
         } else {

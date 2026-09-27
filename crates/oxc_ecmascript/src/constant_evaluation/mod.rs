@@ -162,8 +162,7 @@ impl<'a> ConstantEvaluation<'a> for Expression<'a> {
             Expression::BooleanLiteral(lit) => Some(ConstantValue::Boolean(lit.value)),
             Expression::BigIntLiteral(lit) => lit.to_big_int(ctx).map(ConstantValue::BigInt),
             Expression::StringLiteral(lit) => {
-                // The constant-value cache currently owns UTF-8 strings.
-                // Leave expressions it cannot represent for runtime evaluation.
+                // `ConstantValue::String` cannot represent lone surrogates.
                 Some(ConstantValue::String(Cow::Borrowed(lit.value.as_str()?)))
             }
             Expression::StaticMemberExpression(e) => e.evaluate_value_to(ctx, target_ty),

@@ -505,17 +505,10 @@ impl<'a> TypeScriptEnum {
         })
     }
 
-    /// Whether an enum member initializer is a string, which decides that the member
-    /// gets no reverse mapping.
+    /// Whether TypeScript treats this initializer as a string and omits its reverse mapping.
     ///
-    /// This follows TypeScript: string literals, template literals,
-    /// and `+` with a string on either side are strings, looking through parentheses only,
-    /// so an `as`, `satisfies`, non-null, or angle bracket assertion around a string still
-    /// gets a reverse mapping.
-    /// A reference to another member is a string when that member is,
-    /// even if its value could not be evaluated, as in `B = A` after `A = f() + "x"`.
-    /// Emitting a reverse mapping for such a member wrote a key that could
-    /// overwrite another member.
+    /// Unwrap parentheses, but not assertions. A member reference can be string-valued
+    /// even when its value is not a compile-time constant.
     fn is_string_initializer(
         &self,
         expr: &Expression<'a>,

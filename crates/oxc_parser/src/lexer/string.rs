@@ -144,7 +144,6 @@ macro_rules! handle_string_literal_escape {
             return Kind::Undetermined;
         }
 
-        // Save the decoded JavaScript string in the arena.
         $lexer.save_js_string(str.into_js_str());
 
         Kind::Str
